@@ -2,8 +2,7 @@
 Run **Bluetooth** in Nodepp
 
 ## Dependencies
-- 🪟 ws2bth.h & BluetoothAPIs.h
-- 🐧 bluez
+- 🐧 bluez **(POSIX Only)** `sudo apt install bluez`
 
 ## Compilation
 `g++ -o main main.cpp -I ./include ; ./main`
