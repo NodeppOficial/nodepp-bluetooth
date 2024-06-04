@@ -32,7 +32,7 @@ public:
           
         skt->addrlen = sizeof( skt->server_addr ); socket::start_device();
 
-        if((obj->fd=::socket( AF, SOCK, PROT )) <= 0 )
+        if((obj->fd=::socket( AF, SOCK, IPPROTO )) <= 0 )
           { process::error(onError,"can't initializate socket fd"); return -1; } 
           
         set_buffer_size( CHUNK_SIZE );
