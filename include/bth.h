@@ -66,8 +66,8 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         if( obj->state == 1 ){ return; } obj->state = 1; auto self = type::bind( this );
 
         bsocket_t *sk = new bsocket_t; 
-                  sk->AF  = AF_BTH; 
-                  sk->PROT= IPPROTO_BTH;
+                  sk->AF     = AF_BTH; 
+                  sk->IPPROTO= IPPROTO_BTH;
                   sk->socket( host, port ); 
         
         if(   sk->bind()  < 0 ){ process::error(onError,"Error while binding Bluetooth");   close(); delete sk; return; }
@@ -115,8 +115,8 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         if( obj->state == 1 ){ return; } obj->state = 1; auto self = type::bind( this );
 
         bsocket_t sk = bsocket_t(); 
-                  sk.AF  = AF_BTH; 
-                  sk.PROT= IPPROTO_BTH;
+                  sk.AF     = AF_BTH; 
+                  sk.IPPROTO= IPPROTO_BTH;
                   sk.socket( host, port ); 
                   sk.set_sockopt( obj->agent );
 
