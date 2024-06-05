@@ -2,8 +2,7 @@
 Run **Bluetooth** in Nodepp
 
 ## Dependencies
-- 🐧 bluez **(POSIX Only)** 
-  - `sudo apt install bluez`
+- 🐧 bluez **(POSIX Only)** `sudo apt install bluez`
 
 ## Build & Run
 - 🪟: `g++ -o main main.cpp -I ./include -lws2_32 ; ./main`
