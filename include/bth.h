@@ -27,8 +27,8 @@ protected:
 
     void init_poll_loop( ptr_t<const bth_t>& self ) const noexcept { process::poll::add([=](){
         if( self->is_closed() ){ return -1; } if( self->obj->poll.emit() != -1 ) { auto x = self->obj->poll.get_last_poll();
-                if( x[0] == 0 ){ bsocket_t cli(x[1]); cli.set_sockopt(self->obj->agent); self->onSocket.emit(cli); self->obj->func(cli); }
-                if( x[0] == 1 ){ bsocket_t cli(x[1]); cli.set_sockopt(self->obj->agent); self->onSocket.emit(cli); self->obj->func(cli); }
+                if( x[0] == 0 ){ bsocket_t cli(x[1]); self->onSocket.emit(cli); self->obj->func(cli); }
+                if( x[0] == 1 ){ bsocket_t cli(x[1]); self->onSocket.emit(cli); self->obj->func(cli); }
             #if _KERNEL == NODEPP_KERNEL_WINDOWS
                 if( x[0] ==-1 ){ ::closesocket(x[1]); }
             #else
@@ -69,6 +69,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                   sk->AF     = AF_BTH; 
                   sk->IPPROTO= IPPROTO_BTH;
                   sk->socket( host, port ); 
+                  sk->set_sockopt( self->obj->agent ); 
         
         if(   sk->bind()  < 0 ){ process::error(onError,"Error while binding Bluetooth");   close(); delete sk; return; }
         if( sk->listen()  < 0 ){ process::error(onError,"Error while listening Bluetooth"); close(); delete sk; return; }
@@ -91,7 +92,6 @@ public: bth_t() noexcept : obj( new NODE() ) {}
             elif ( self->obj->chck == true ){ self->obj->poll.push_read(_accept); coGoto(0); }
             else { bsocket_t cli( _accept ); if( cli.is_available() ){ 
                    process::poll::add([=]( bsocket_t cli ){
-                        cli.set_sockopt( self->obj->agent ); 
                         self->onSocket.emit( cli ); 
                         self->obj->func( cli ); 
                         return -1;
@@ -118,7 +118,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                   sk.AF     = AF_BTH; 
                   sk.IPPROTO= IPPROTO_BTH;
                   sk.socket( host, port ); 
-                  sk.set_sockopt( obj->agent );
+                  sk.set_sockopt( self->obj->agent );
 
         if( sk.connect() < 0 ){ process::error(onError,"Error while connecting Bluetooth"); close(); return; }
         if( cb != nullptr ){ (*cb)(sk); } sk.onClose.on([=](){ self->close(); });
