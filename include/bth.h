@@ -1,3 +1,14 @@
+/*
+ * Copyright 2023 The Nodepp Project Authors. All Rights Reserved.
+ *
+ * Licensed under the MIT (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://github.com/NodeppOficial/nodepp/blob/main/LICENSE
+ */
+
+/*────────────────────────────────────────────────────────────────────────────*/
+
 #ifndef NODEPP_BLUETOOTH
 #define NODEPP_BLUETOOTH
 
@@ -27,16 +38,15 @@ protected:
 
     void init_poll_loop( ptr_t<const bth_t>& self ) const noexcept { process::poll::add([=](){
         if( self->is_closed() ){ return -1; } if( self->obj->poll.emit() != -1 ) { auto x = self->obj->poll.get_last_poll();
-                if( x[0] == 0 ){ bsocket_t cli(x[1]); cli.set_sockopt(self->obj->agent); self->onSocket.emit(cli); self->obj->func(cli); }
-                if( x[0] == 1 ){ bsocket_t cli(x[1]); cli.set_sockopt(self->obj->agent); self->onSocket.emit(cli); self->obj->func(cli); }
-            #if _KERNEL == NODEPP_KERNEL_WINDOWS
-                if( x[0] ==-1 ){ ::closesocket(x[1]); }
-            #else
-                if( x[0] ==-1 ){ ::close(x[1]); }
-            #endif
-            }   return  1;
-        });
-    }
+            if( x[0] == 0 ){ bsocket_t cli(x[1]); cli.set_sockopt( self->obj->agent ); self->onSocket.emit(cli); self->obj->func(cli); }
+            if( x[0] == 1 ){ bsocket_t cli(x[1]); cli.set_sockopt( self->obj->agent ); self->onSocket.emit(cli); self->obj->func(cli); }
+        #if _KERNEL == NODEPP_KERNEL_WINDOWS
+            if( x[0] ==-1 ){ ::closesocket(x[1]); }
+        #else
+            if( x[0] ==-1 ){ ::close(x[1]); }
+        #endif
+        }   return 1;
+    }); }
     
 public: bth_t() noexcept : obj( new NODE() ) {}
 
@@ -48,13 +58,14 @@ public: bth_t() noexcept : obj( new NODE() ) {}
     
     /*─······································································─*/
 
-    bth_t( decltype(NODE::func) _func, agent_t* opt ) noexcept : obj( new NODE() ) 
-         { obj->func=_func; obj->agent=opt==nullptr?agent_t():*opt;  }
+    bth_t( decltype(NODE::func) _func, agent_t* opt=nullptr ) noexcept : obj( new NODE() ) 
+         { obj->func=_func; obj->agent=opt==nullptr?agent_t():*opt; }
     
     /*─······································································─*/
     
-    void     close() const noexcept { if( obj->state<0 ){ return; } obj->state=-1; onClose.emit(); }
-    bool is_closed() const noexcept { return obj == nullptr ? 1 : obj->state < 0; }
+    void     close() const noexcept { if( obj->state<=0 ){ return; } obj->state=-1; onClose.emit(); }
+    
+    bool is_closed() const noexcept { return obj == nullptr ? 1 : obj->state <= 0; }
     
     /*─······································································─*/
 
@@ -65,30 +76,30 @@ public: bth_t() noexcept : obj( new NODE() ) {}
     void listen( const string_t& host, int port, decltype(NODE::func)* cb=nullptr ) const noexcept {
         if( obj->state == 1 ){ return; } obj->state = 1; auto self = type::bind( this );
 
-        bsocket_t *sk = new bsocket_t; 
-                  sk->AF     = AF_BTH; 
-                  sk->IPPROTO= IPPROTO_BTH;
-                  sk->socket( host, port ); 
-                  sk->set_sockopt( self->obj->agent ); 
+        auto sk = bsocket_t(); 
+             sk.AF     = AF_BTH; 
+             sk.IPPROTO= IPPROTO_BTH;
+             sk.socket( host, port ); 
+             sk.set_sockopt( self->obj->agent ); 
         
-        if(   sk->bind()  < 0 ){ process::error(onError,"Error while binding Bluetooth");   close(); delete sk; return; }
-        if( sk->listen()  < 0 ){ process::error(onError,"Error while listening Bluetooth"); close(); delete sk; return; }
+        if(   sk.bind()  < 0 ){ _EERROR(onError,"Error while binding Bluetooth");   close(); sk.free(); return; }
+        if( sk.listen()  < 0 ){ _EERROR(onError,"Error while listening Bluetooth"); close(); sk.free(); return; }
         if( obj->chck == true ){ init_poll_loop( self ); }
 
-        onOpen.emit(*sk); if( cb != nullptr ){ (*cb)(*sk); } 
+        onOpen.emit(sk); if( cb != nullptr ){ (*cb)(sk); } 
         
         process::task::add([=](){
             static int _accept = 0; 
         coStart
 
-            while( sk != nullptr ){ _accept = sk->_accept();
-                if( self->is_closed() || !sk->is_available() )
+            while( !sk.is_closed() ){ _accept = sk._accept();
+                if( self->is_closed() || !sk.is_available() )
                   { break; } elif ( _accept != -2 )
                   { break; } coYield(1);
             }
 
-            if( _accept == -1 ){ process::error(self->onError,"Error while accepting Bluetooth"); coGoto(2); }
-            elif ( !sk->is_available() || self->is_closed() ){ coGoto(2); }
+            if( _accept == -1 ){ _EERROR(self->onError,"Error while accepting Bluetooth"); coGoto(2); }
+            elif ( !sk.is_available() || self->is_closed() ){ coGoto(2); }
             elif ( self->obj->chck == true ){ self->obj->poll.push_read(_accept); coGoto(0); }
             else { bsocket_t cli( _accept ); if( cli.is_available() ){ 
                    process::poll::add([=]( bsocket_t cli ){
@@ -99,7 +110,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                    }, cli );
             } coGoto(0); }
 
-            coYield(2); self->close(); delete sk; 
+            coYield(2); self->close(); sk.free(); 
         
         coStop
         });
@@ -121,7 +132,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                   sk.socket( host, port ); 
                   sk.set_sockopt( self->obj->agent );
 
-        if( sk.connect() < 0 ){ process::error(onError,"Error while connecting Bluetooth"); close(); return; }
+        if( sk.connect() < 0 ){ _EERROR(onError,"Error while connecting Bluetooth"); close(); return; }
         if( cb != nullptr ){ (*cb)(sk); } sk.onClose.on([=](){ self->close(); });
         onOpen.emit(sk); sk.onOpen.emit(); onSocket.emit(sk); obj->func(sk);
     }
@@ -139,7 +150,6 @@ namespace bth {
     bth_t server( const bth_t& server ){ server.onSocket([=]( bsocket_t cli ){
         ptr_t<_file_::read> _read = new _file_::read;
         cli.onDrain.once([=](){ cli.free(); });
-        cli.busy();
 
         server.onConnect.once([=]( bsocket_t cli ){ process::poll::add([=](){
             if(!cli.is_available() )    { cli.close(); return -1; }
@@ -166,10 +176,9 @@ namespace bth {
     bth_t client( const bth_t& client ){ client.onOpen.once([=]( bsocket_t cli ){
         ptr_t<_file_::read> _read = new _file_::read;
         cli.onDrain.once([=](){ cli.free(); });
-        cli.busy();
 
         process::poll::add([=](){
-            if(!cli.is_available() )   { cli.close(); return -1; }
+            if(!cli.is_available() )    { cli.close(); return -1; }
             if((*_read)(&cli)==1 )      { return 1; } 
             if(  _read->state<=0 )      { return 1; }
             cli.onData.emit(_read->data); return 1;
