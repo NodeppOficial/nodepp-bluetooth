@@ -144,8 +144,8 @@ public: bth_t() noexcept : obj( new NODE() ) {}
 namespace bth {
 
     bth_t server( const bth_t& server ){ server.onSocket([=]( bsocket_t cli ){
+        cli.onDrain.once([=](){ cli.free(); cli.onData.clear(); });
         ptr_t<_file_::read> _read = new _file_::read;
-        cli.onDrain.once([=](){ cli.free(); });
 
         server.onConnect.once([=]( bsocket_t cli ){ process::poll::add([=](){
             if(!cli.is_available() )    { cli.close(); return -1; }
@@ -170,8 +170,8 @@ namespace bth {
     /*─······································································─*/
 
     bth_t client( const bth_t& client ){ client.onOpen.once([=]( bsocket_t cli ){
+        cli.onDrain.once([=](){ cli.free(); cli.onData.clear(); });
         ptr_t<_file_::read> _read = new _file_::read;
-        cli.onDrain.once([=](){ cli.free(); });
 
         process::poll::add([=](){
             if(!cli.is_available() )    { cli.close(); return -1; }
