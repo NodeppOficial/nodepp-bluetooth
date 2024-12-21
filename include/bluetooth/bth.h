@@ -119,8 +119,11 @@ public: bth_t() noexcept : obj( new NODE() ) {}
     
     /*─······································································─*/
 
-    void connect( const string_t& host, int port, decltype(NODE::func)* cb=nullptr ) const noexcept {
-        if( obj->state == 1 ){ return; } obj->state = 1; auto self = type::bind( this );
+    void connect( const string_t& host, int port, decltype(NODE::func)* fn=nullptr ) const noexcept {
+        if( obj->state == 1 ){ return; }
+        
+        ptr_t<decltype( NODE::func )> cb = type::bind(fn);
+        auto self = type::bind( this ); obj->state = 1;
 
         bsocket_t sk = bsocket_t(); 
                   sk.AF     = AF_BTH; 
@@ -128,9 +131,28 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                   sk.socket( host, port ); 
                   sk.set_sockopt( self->obj->agent );
 
-        if( sk.connect() < 0 ){ _EERROR(onError,"Error while connecting Bluetooth"); close(); return; }
-        if( cb != nullptr ){ (*cb)(sk); } sk.onClose.on([=](){ self->close(); });
-        onOpen.emit(sk); sk.onOpen.emit(); onSocket.emit(sk); obj->func(sk);
+        process::task::add([=](){
+        coStart
+
+            while( sk._connect() == -2 ){ coNext; } 
+            if   ( sk._connect()  <  0 ){ 
+                _EERROR(self->onError,"Error while connecting Bluetooth"); 
+                self->close(); coEnd; 
+            }
+
+            if( self->obj->chck ){ 
+                self->obj->poll.push_write( sk.get_fd() );
+                while( self->obj->poll.get_last_poll()==nullptr )
+                     { self->obj->poll.emit(); coNext; }
+            }
+            
+            sk.onClose.once([=](){ self->close(); }); sk.onOpen.emit(); 
+            self->onSocket.emit( sk );      self->onOpen.emit(sk); 
+            if( cb != nullptr ){(*cb)(sk);} self->obj->func(sk);
+            
+        coStop
+        });
+        
     }
 
     void connect( const string_t& host, int port, decltype(NODE::func) cb ) const noexcept { 
