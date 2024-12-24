@@ -78,11 +78,12 @@ public: bth_t() noexcept : obj( new NODE() ) {}
 
         auto sk = bsocket_t(); 
              sk.AF     = AF_BTH; 
+             sk.SOCK   = SOCK_STREAM;
              sk.IPPROTO= IPPROTO_BTH;
              sk.socket( host, port ); 
              sk.set_sockopt( self->obj->agent ); 
         
-        if(   sk.bind() < 0 ){ _EERROR(onError,"Error while binding Bluetooth");   close(); sk.free(); return; }
+        if( sk.bind()   < 0 ){ _EERROR(onError,"Error while binding Bluetooth");   close(); sk.free(); return; }
         if( sk.listen() < 0 ){ _EERROR(onError,"Error while listening Bluetooth"); close(); sk.free(); return; }
         if( obj->chck )      { init_poll_loop( self ); }
 
@@ -127,6 +128,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
 
         bsocket_t sk = bsocket_t(); 
                   sk.AF     = AF_BTH; 
+                  sk.SOCK   = SOCK_STREAM;
                   sk.IPPROTO= IPPROTO_BTH;
                   sk.socket( host, port ); 
                   sk.set_sockopt( self->obj->agent );
@@ -180,7 +182,7 @@ namespace bth {
             server.onConnect.emit(cli); return -1;
         });
 
-    }); server.poll( false ); return server; }
+    }); return server; }
 
     /*─······································································─*/
 

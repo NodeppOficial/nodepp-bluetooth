@@ -28,12 +28,12 @@ public:
 
     virtual int socket( const string_t& host, int port ) noexcept { 
         if( host.empty() )
-          { process::error(onError,"host is empty"); return -1; }
+          { _EERROR(onError,"host is empty"); return -1; }
           
-        skt->addrlen = sizeof( skt->server_addr ); socket::start_device();
+        skt->addrlen = sizeof( skt->server_addr );
 
         if((obj->fd=::socket( AF, SOCK, IPPROTO )) <= 0 )
-          { process::error(onError,"can't initializate socket fd"); return -1; } 
+          { _EERROR(onError,"can't initializate socket fd"); return -1; } 
           
         set_buffer_size( CHUNK_SIZE );
         set_nonbloking_mode();

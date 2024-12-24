@@ -4,9 +4,11 @@
 /*────────────────────────────────────────────────────────────────────────────*/
 
 #if   _KERNEL == NODEPP_KERNEL_WINDOWS
+    #include <nodepp/poll.h>
     #include <nodepp/socket.h>
     #include "windows/bluetooth.cpp"
 #elif _KERNEL == NODEPP_KERNEL_POSIX
+    #include <nodepp/poll.h>
     #include <nodepp/socket.h>
     #include "posix/bluetooth.cpp"
 #else
