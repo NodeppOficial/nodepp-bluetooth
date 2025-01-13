@@ -84,7 +84,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         onOpen.emit(sk); cb( sk );
         
         process::task::add([=](){
-            static int _accept = 0; self->next();
+            static int _accept=-2; self->next();
         coStart
 
             while( _accept == -2 ){
@@ -92,9 +92,11 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                    _accept = sk._accept(); coYield(1);
                if( _accept!= -2 ){ break; } 
             }
-
-              if( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TCP"); coGoto(2); }
-            elif( self->obj->chck ){ self->obj->poll.push_read(_accept); } else {
+            
+              if( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TLS"); coGoto(2); }
+            elif( self->obj->chck ){ if( self->obj->poll.push_read(_accept)==0 )
+                { bsocket_t cli( _accept ); cli.free(); } 
+            } else {
                   bsocket_t cli( _accept );
                   cli.set_sockopt( self->obj->agent ); _poll_::poll task; 
                   process::poll::add( task, cli, self, self->obj->func );
@@ -133,8 +135,9 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                 self->close(); coEnd; 
             }
 
-            if( self->obj->chck && self->obj->poll.push_write(sk.get_fd()) ){
-                while( self->obj->poll.emit()==-1 ){ 
+            if( self->obj->chck ){
+            if( self->obj->poll.push_write(sk.get_fd())==0 )
+              { sk.free(); } while( self->obj->poll.emit()==0 ){ 
                    if( process::now() > sk.get_send_timeout() )
                      { coEnd; } coNext; }
             }   cb( sk );
