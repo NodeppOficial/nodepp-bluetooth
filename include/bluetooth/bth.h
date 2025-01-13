@@ -36,17 +36,12 @@ protected:
     
     /*─······································································─*/
 
-    void init_poll_loop( ptr_t<const bth_t>& self ) const noexcept { process::poll::add([=](){
-        if( self->is_closed() ){ return -1; } if( self->obj->poll.emit() != -1 ) { auto x = self->obj->poll.get_last_poll();
-            if( x[0] == 0 ){ bsocket_t cli(x[1]); cli.set_sockopt( self->obj->agent ); self->onSocket.emit(cli); self->obj->func(cli); }
-            if( x[0] == 1 ){ bsocket_t cli(x[1]); cli.set_sockopt( self->obj->agent ); self->onSocket.emit(cli); self->obj->func(cli); }
-        #if _KERNEL == NODEPP_KERNEL_WINDOWS
-            if( x[0] ==-1 ){ ::closesocket(x[1]); }
-        #else
-            if( x[0] ==-1 ){ ::close(x[1]); }
-        #endif
-        }   return 1;
-    }); }
+    int next() const noexcept {
+          if( obj->poll.emit()==-1 ){ return -1; } auto x = obj->poll.get_last_poll();
+          if( x[0] == 0 ){ bsocket_t cli(x[1]); cli.set_sockopt( obj->agent ); onSocket.emit(cli); obj->func(cli); }
+        elif( x[0] == 1 ){ bsocket_t cli(x[1]); cli.set_sockopt( obj->agent ); onSocket.emit(cli); obj->func(cli); }
+        else             { bsocket_t cli(x[1]); cli.free(); } return 1;
+    }
     
 public: bth_t() noexcept : obj( new NODE() ) {}
 
@@ -73,8 +68,8 @@ public: bth_t() noexcept : obj( new NODE() ) {}
     
     /*─······································································─*/
 
-    void listen( const string_t& host, int port, decltype(NODE::func)* cb=nullptr ) const noexcept {
-        if( obj->state == 1 ){ return; } obj->state = 1; auto self = type::bind( this );
+    void listen( const string_t& host, int port, decltype(NODE::func) cb ) const noexcept {
+        if( obj->state == 1 ){ return; } auto self = type::bind( this ); obj->state = 1;
 
         auto sk = bsocket_t(); 
              sk.AF     = AF_BTH; 
@@ -85,27 +80,25 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         
         if( sk.bind()   < 0 ){ _EERROR(onError,"Error while binding Bluetooth");   close(); sk.free(); return; }
         if( sk.listen() < 0 ){ _EERROR(onError,"Error while listening Bluetooth"); close(); sk.free(); return; }
-        if( obj->chck )      { init_poll_loop( self ); }
 
-        onOpen.emit(sk); if( cb != nullptr ){ (*cb)(sk); } 
+        onOpen.emit(sk); cb( sk );
         
         process::task::add([=](){
-            static int _accept = 0; 
+            static int _accept = 0; self->next();
         coStart
 
-            while( !sk.is_closed() ){ _accept = sk._accept();
-                if( self->is_closed() || !sk.is_available() )
-                  { break; } elif ( _accept != -2 )
-                  { break; } coYield(1);
+            while( _accept == -2 ){
+               if( sk.is_closed() || sk.is_closed() ){ coGoto(2); } 
+                   _accept = sk._accept(); coYield(1);
+               if( _accept!= -2 ){ break; } 
             }
 
-            if( _accept == -1 ){ _EERROR(self->onError,"Error while accepting Bluetooth"); coGoto(2); }
-            elif ( !sk.is_available() || self->is_closed() ){ coGoto(2); }
-            elif ( self->obj->chck ){ self->obj->poll.push_read(_accept); coGoto(0); }
-            else { bsocket_t cli( _accept );
-                   _poll_::poll task; cli.set_sockopt( self->obj->agent ); 
-                   process::poll::add( task, cli, self, self->obj->func );
-            coGoto(0); }
+              if( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TCP"); coGoto(2); }
+            elif( self->obj->chck ){ self->obj->poll.push_read(_accept); } else {
+                  bsocket_t cli( _accept );
+                  cli.set_sockopt( self->obj->agent ); _poll_::poll task; 
+                  process::poll::add( task, cli, self, self->obj->func );
+            }     _accept = -2; coGoto(0); 
 
             coYield(2); self->close(); sk.free(); 
         
@@ -114,17 +107,14 @@ public: bth_t() noexcept : obj( new NODE() ) {}
 
     }
 
-    void listen( const string_t& host, int port, decltype(NODE::func) cb ) const noexcept { 
-         listen( host, port, &cb ); 
+    void listen( const string_t& host, int port ) const noexcept { 
+         listen( host, port, []( bsocket_t ){} ); 
     }
     
     /*─······································································─*/
 
-    void connect( const string_t& host, int port, decltype(NODE::func)* fn=nullptr ) const noexcept {
-        if( obj->state == 1 ){ return; }
-        
-        ptr_t<decltype( NODE::func )> cb = type::bind(fn);
-        auto self = type::bind( this ); obj->state = 1;
+    void connect( const string_t& host, int port, decltype(NODE::func) cb ) const noexcept {
+        if( obj->state == 1 ){ return; } auto self = type::bind( this ); obj->state = 1;
 
         bsocket_t sk = bsocket_t(); 
                   sk.AF     = AF_BTH; 
@@ -134,6 +124,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                   sk.set_sockopt( self->obj->agent );
 
         process::task::add([=](){
+            if( self->is_closed() ){ return -1; }
         coStart
 
             while( sk._connect() == -2 ){ coNext; } 
@@ -142,23 +133,23 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                 self->close(); coEnd; 
             }
 
-            if( self->obj->chck ){ 
-                self->obj->poll.push_write( sk.get_fd() );
-                while( self->obj->poll.get_last_poll()==nullptr )
-                     { coNext; self->obj->poll.emit(); }
-            }
+            if( self->obj->chck && self->obj->poll.push_write(sk.get_fd()) ){
+                while( self->obj->poll.emit()==-1 ){ 
+                   if( process::now() > sk.get_send_timeout() )
+                     { coEnd; } coNext; }
+            }   cb( sk );
             
-            sk.onClose.once([=](){ self->close(); }); sk.onOpen.emit(); 
-            self->onSocket.emit( sk );      self->onOpen.emit(sk); 
-            if( cb != nullptr ){(*cb)(sk);} self->obj->func(sk);
+            sk.onClose.once([=](){ self->close(); }); 
+            self->onSocket.emit(sk); sk.onOpen.emit();      
+            self->onOpen.emit(sk); self->obj->func(sk);
             
         coStop
         });
         
     }
 
-    void connect( const string_t& host, int port, decltype(NODE::func) cb ) const noexcept { 
-         connect( host, port, &cb ); 
+    void connect( const string_t& host, int port ) const noexcept { 
+         connect( host, port, []( bsocket_t ){} ); 
     }
 
 };
