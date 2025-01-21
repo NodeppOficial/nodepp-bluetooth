@@ -80,31 +80,26 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         
         if( sk.bind()   < 0 ){ _EERROR(onError,"Error while binding Bluetooth");   close(); sk.free(); return; }
         if( sk.listen() < 0 ){ _EERROR(onError,"Error while listening Bluetooth"); close(); sk.free(); return; }
-
-        onOpen.emit(sk); cb( sk );
         
-        process::task::add([=](){
-            static int _accept=-2; self->next();
-        coStart
+        cb( sk ); onOpen.emit( sk ); process::task::add([=](){
+            int _accept = -2; self->next();
 
             while( _accept == -2 ){
-               if( sk.is_closed() || sk.is_closed() ){ coGoto(2); } 
-                   _accept = sk._accept(); coYield(1);
-               if( _accept!= -2 ){ break; } 
+               if( sk.is_closed() || sk.is_closed() ){ goto ERROR; } 
+               if((_accept=sk._accept()) != -2 ){ break; } return 1; 
             }
             
-              if( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TLS"); coGoto(2); }
+              if( _accept < 0 ){ _EERROR(self->onError,"Error while accepting Bluetooth"); goto ERROR; }
             elif( self->obj->chck ){ if( self->obj->poll.push_read(_accept)==0 )
                 { bsocket_t cli( _accept ); cli.free(); } 
             } else {
                   bsocket_t cli( _accept );
                   cli.set_sockopt( self->obj->agent ); _poll_::poll task; 
                   process::poll::add( task, cli, self, self->obj->func );
-            }     _accept = -2; coGoto(0); 
-
-            coYield(2); self->close(); sk.free(); 
+            }     
+            
+            return 1; ERROR:; self->close(); sk.free(); return -1;
         
-        coStop
         });
 
     }
