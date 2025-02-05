@@ -83,13 +83,13 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         if( sk.listen() < 0 ){ _EERROR(onError,"Error while listening Bluetooth"); close(); sk.free(); return; }
         
         cb( sk ); onOpen.emit( sk ); process::task::add([=](){
-            static int _accept = -2; while( self->next()==1 ){ return 0; }
+            static int _accept = -2;
         coStart
 
             while( _accept == -2 ){
-               if( self->is_closed() || sk.is_closed() ){ coGoto(2); } 
-                   _accept = sk._accept(); if( _accept!=-2 ){ break; } 
-            coNext; }
+               if( self->is_closed() || sk.is_closed() ) { coGoto(2); } 
+                   _accept = sk._accept(); if( _accept!=-2 ) { break; } 
+            while( self->next()==1 ){ coSet(3); return 0; coYield(3); } coYield(1); }
             
             if ( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TCP"); coGoto(2); }
             do { if( self->obj->poll.push_read(_accept)==0 )
