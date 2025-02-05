@@ -28,7 +28,6 @@ protected:
 
     struct NODE {
         int                        state = 0;
-        bool                       chck  = 1;
         agent_t                    agent;
         poll_t                     poll ;
         function_t<void,bsocket_t> func ;
@@ -36,11 +35,17 @@ protected:
     
     /*─······································································─*/
 
+    template< class T > void add_socket( T& cli ) const noexcept {
+        auto self = type::bind( this ); process::poll::add([=](){
+             self->obj->func(cli); return -1;
+        }); 
+    }
+
     int next() const noexcept {
           if( obj->poll.emit()==-1 ){ return -1; } auto x = obj->poll.get_last_poll();
-          if( x[0] == 0 ){ bsocket_t cli(x[1]); cli.set_sockopt( obj->agent ); onSocket.emit(cli); obj->func(cli); }
-        elif( x[0] == 1 ){ bsocket_t cli(x[1]); cli.set_sockopt( obj->agent ); onSocket.emit(cli); obj->func(cli); }
-        else             { bsocket_t cli(x[1]); cli.free(); } return 1;
+          if( x[0] >= 0 )
+            { bsocket_t cli( x[1] ); cli.set_sockopt( obj->agent ); add_socket(cli); } 
+        else{ bsocket_t cli( x[1] ); cli.free(); } return 1;
     }
     
 public: bth_t() noexcept : obj( new NODE() ) {}
@@ -64,10 +69,6 @@ public: bth_t() noexcept : obj( new NODE() ) {}
     
     /*─······································································─*/
 
-    void poll( bool chck ) const noexcept { obj->chck = chck; }
-    
-    /*─······································································─*/
-
     void listen( const string_t& host, int port, decltype(NODE::func) cb ) const noexcept {
         if( obj->state == 1 ){ return; } auto self = type::bind( this ); obj->state = 1;
 
@@ -82,7 +83,7 @@ public: bth_t() noexcept : obj( new NODE() ) {}
         if( sk.listen() < 0 ){ _EERROR(onError,"Error while listening Bluetooth"); close(); sk.free(); return; }
         
         cb( sk ); onOpen.emit( sk ); process::task::add([=](){
-            static int _accept = -2; self->next();
+            static int _accept = -2; while( self->next()==1 ){ return 0; }
         coStart
 
             while( _accept == -2 ){
@@ -90,15 +91,10 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                    _accept = sk._accept(); if( _accept!=-2 ){ break; } 
             coNext; }
             
-              if( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TCP"); coGoto(2); }
-            elif( self->obj->chck ){
-              if( self->obj->poll.push_read(_accept)==0 )
-                { bsocket_t cli( _accept ); cli.free(); } 
-            } else {
-                  bsocket_t cli( _accept );
-                  cli.set_sockopt( self->obj->agent ); _poll_::poll task; 
-                  process::poll::add( task, cli, self, self->obj->func );
-            }     _accept = -2; coGoto(0); 
+            if ( _accept < 0 ){ _EERROR(self->onError,"Error while accepting TCP"); coGoto(2); }
+            do { if( self->obj->poll.push_read(_accept)==0 )
+               { bsocket_t cli( _accept ); cli.free(); } 
+               } while(0); _accept = -2; coSet(0); return 0; //coGoto(0); 
 
             coYield(2); self->close(); sk.free(); 
         
@@ -133,12 +129,10 @@ public: bth_t() noexcept : obj( new NODE() ) {}
                 self->close(); coEnd; 
             }
 
-            if( self->obj->chck ){
             if( self->obj->poll.push_write(sk.get_fd())==0 )
               { sk.free(); } while( self->obj->poll.emit()==0 ){ 
                    if( process::now() > sk.get_send_timeout() )
-                     { coEnd; } coNext; }
-            }   cb( sk );
+                     { coEnd; } coNext; } cb( sk );
             
             sk.onClose.once([=](){ self->close(); }); 
             self->onSocket.emit(sk); sk.onOpen.emit();      
